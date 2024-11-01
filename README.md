@@ -14,4 +14,4 @@ Here, the hybrid_search first calculates the cosine similarity between the query
 
 3. Using the top-k results to generate an answer to the question
 
-Here we're going to use an expensive LLM to generate a good response. We will make a prompt that includes some of the context from the 
+Here we're going to use an expensive LLM to generate a good response. We will make a prompt that includes some of the context from the top retrieved chunk, and asks the question to OpenAI's 4o model. In the output, I'll print the context id number, which would allow us to recover the exact location in the text, as well as the context itself.
