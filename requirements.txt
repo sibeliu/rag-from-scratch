@@ -1,0 +1,12 @@
+python-dotenv
+langchain
+jupyter
+PyPDF2
+openai
+langchain_experimental
+langchain_openai
+PyMuPDF
+SQLAlchemy
+sentence_transformers
+scikit-learn 
+numpy
