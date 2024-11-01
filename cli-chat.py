@@ -4,11 +4,10 @@ import openai
 from openai import OpenAI
 from os.path import join, dirname
 from dotenv import load_dotenv
-import sys
 import fitz
+import sqlite3
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_openai.embeddings import OpenAIEmbeddings
-import sqlite3
 from sqlalchemy import create_engine, Column, Integer, String, LargeBinary, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -34,17 +33,23 @@ if len(sys.argv) != 3:
 path = sys.argv[1]
 question = sys.argv[2]
 
-# Set up database and embedding model
 # Initialize the SentenceTransformer model for generating embeddings
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Create a SQLite database engine
-engine = create_engine('sqlite:///text_chunks.db', echo=True)
+# Define the database file path
+db_path = 'text_chunks.db'
+
+# Check if the database file exists and delete it if it does (for this demo, show end to end)
+if os.path.exists(db_path):
+    os.remove(db_path)
+    print(f"Deleted existing database file: {db_path}")
+
+# Create a new database
+engine = create_engine(f'sqlite:///{db_path}', echo=True)
+print(f"Created new database: {db_path}")
+
 Base = declarative_base()
-# Create the table
-Base.metadata.create_all(engine)
-Session = sessionmaker(bind=engine)
-session = Session()
 
 # Define the TextChunk to use with the database
 class TextChunk(Base):
@@ -52,6 +57,11 @@ class TextChunk(Base):
     id = Column(Integer, primary_key=True)
     text = Column(String)
     embedding = Column(LargeBinary)
+
+# Create the table
+Base.metadata.create_all(engine)
+Session = sessionmaker(bind=engine)
+session = Session()
 
 # helper functions
 def load_pdf(file_path):
@@ -62,17 +72,16 @@ def load_pdf(file_path):
         text += page.get_text()
     return text
 
-def chunk_text(text, chunk_size=1000, chunk_overlap=200):
+def chunk_text(text):
     """Chunk the text using semantic chunking. Modify gradient threshold and min_chunk_size to improve results."""
     text_splitter = SemanticChunker(
                 OpenAIEmbeddings(), 
                 breakpoint_threshold_type="gradient",
                 breakpoint_threshold_amount=.94,
-                min_chunk_size=1000
+                min_chunk_size=500
     )
     chunks = text_splitter.split_text(text)
     return chunks
-
 
 def save_chunks_to_db(chunks):
     """Save text chunks and their embeddings to the database."""
@@ -83,7 +92,7 @@ def save_chunks_to_db(chunks):
         session.add(text_chunk)
     session.commit()
 
-def hybrid_search(query, top_k=5):
+def hybrid_search(query, top_k=3): #implemented for broader context in future
     """Perform hybrid search over both vector embeddings and keywords."""
     # Generate the query embedding
     query_embedding = model.encode([query])[0]
@@ -98,21 +107,16 @@ def hybrid_search(query, top_k=5):
         similarity = cosine_similarity([query_embedding], [chunk_embedding])[0][0]
         similarities.append((chunk, similarity))
     
-    # Sort by similarity (vector search)
+    # Sort by similarity and by keywords
     similarities.sort(key=lambda x: x[1], reverse=True)
-    
-    # Perform keyword search
     keyword_matches = [chunk for chunk, _ in similarities if query.lower() in chunk.text.lower()]
     
-    # Combine results (hybrid search)
+    # Combine results
     hybrid_results = keyword_matches + [chunk for chunk, _ in similarities if chunk not in keyword_matches]
     
-    # Return top_k results
     return hybrid_results[:top_k]
 
 def generate_response(base_prompt, user_question, context):
-    # Combine the base prompt, context, and user question into a single prompt
-    
     user_prompt = f"Context:\n{context}\n\nUser Question: {user_question}"
     
     client = OpenAI()
@@ -137,11 +141,11 @@ chunks = chunk_text(text)
 
 #save the chunks to database: we want to be able to perform hybrid search for both vector similarity and BM25
 save_chunks_to_db(chunks)
-results = hybrid_search(question)
+results = hybrid_search(question) #returning a list of top-k relevant chunks
 
 base_prompt = "You are a helpful assistant. Use the following context to answer the user's question."
-context = results[0].text
-context_id = results[0].id
+context = results[0].text #we're only going to use the top chunk in this demo
+context_id = results[0].id 
 
 # Output to user
 print ("\nYou asked:", question)
