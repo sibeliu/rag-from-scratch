@@ -1,4 +1,4 @@
-# kiva-test
+# rag-from-scratch 
 
 ## Usage: 
 - Clone this repo locally
